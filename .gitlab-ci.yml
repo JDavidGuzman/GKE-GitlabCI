@@ -1,0 +1,127 @@
+stages:
+  - build
+  - test
+  - push 
+  - deploy
+  - deploy to production
+  - delete
+  
+build1:
+  stage: build
+  script:
+    - echo "Do your build here"
+    - cd actuator-service
+    - chmod u+x gradlew
+    - ./gradlew build
+  tags:
+    - git-runner-01
+  artifacts:
+    paths:
+      - actuator-service/build/libs/actuator-service-0.0.1-SNAPSHOT.jar
+
+test1:
+  stage: test
+  script:
+    - echo "Do a test here"
+    - cd actuator-service
+    - chmod u+x gradlew
+    - ./gradlew check
+  tags:
+    - git-runner-01
+
+test2:
+  stage: test
+  script:
+    - echo "Do another parallel test here"
+    - cd actuator-service
+    - chmod u+x gradlew
+    - ./gradlew test
+  tags: 
+    - git-runner-01
+
+push_image:
+  stage: push
+  script:
+    - echo "Build Image"
+    - docker build -t gcr.io/project-spring/spring:$CI_COMMIT_SHORT_SHA .
+    - echo "GCP SA AUTH"
+    - gcloud auth activate-service-account $SERVICE_ACCOUNT_EMAIL --key-file=$GCP_CREDENTIALS_FILE
+    - echo "Push Image"
+    - docker push gcr.io/project-spring/spring:$CI_COMMIT_SHORT_SHA
+    - docker tag gcr.io/project-spring/spring:$CI_COMMIT_SHORT_SHA gcr.io/project-spring/spring:latest
+    - docker push gcr.io/project-spring/spring:latest
+    - echo "Connect to Cluster"
+    - gcloud container clusters get-credentials $CLUSTER --zone us-central1-c --project project-spring
+  tags: 
+    - git-runner-01
+
+deploy_develop:
+  stage: deploy
+  script:
+    - echo "Do your deploy on develop"
+    #- kubectl apply -k kubernetes/overlays/develop
+    - docker run --rm -v $PWD/kubernetes:/home/kubernetes k8s.gcr.io/kustomize/kustomize:v4.1.3 build /home/kubernetes/overlays/develop | kubectl apply -f -
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+  tags: 
+    - git-runner-01
+
+deploy_qa:
+  stage: deploy
+  script:
+    - echo "Do your deploy on qa"
+    #- kubectl apply -k kubernetes/overlays/qa
+    - docker run --rm -v $PWD/kubernetes:/home/kubernetes k8s.gcr.io/kustomize/kustomize:v4.1.3 build /home/kubernetes/overlays/qa | kubectl apply -f -
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^(qa|master)$/
+  tags: 
+    - git-runner-01
+
+deploy_master:
+  stage: deploy to production
+  script:
+    - echo "Do your deploy on production"
+    #- kubectl apply -k kubernetes/overlays/production
+    - docker run --rm -v $PWD/kubernetes:/home/kubernetes k8s.gcr.io/kustomize/kustomize:v4.1.3 build /home/kubernetes/overlays/production | kubectl apply -f - 
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      when: manual
+  tags: 
+    - git-runner-01 
+
+delete_develop:
+  stage: delete
+  script:
+    - echo "Delete deploy on develop"
+    #- kubectl delete -k kubernetes/overlays/develop
+    - docker run --rm -v $PWD/kubernetes:/home/kubernetes k8s.gcr.io/kustomize/kustomize:v4.1.3 build /home/kubernetes/overlays/develop | kubectl delete -f -
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+  tags: 
+    - git-runner-01
+  
+delete_qa:
+  stage: delete
+  script:
+    - echo "Delete deploy on develop"
+    #- kubectl delete -k kubernetes/overlays/develop
+    - docker run --rm -v $PWD/kubernetes:/home/kubernetes k8s.gcr.io/kustomize/kustomize:v4.1.3 build /home/kubernetes/overlays/qa | kubectl delete -f -
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^(qa|master)$/
+      when: manual
+  tags: 
+    - git-runner-01
+
+delete_production:
+  stage: delete
+  script:
+    - echo "Delete deploy on develop"
+    #- kubectl delete -k kubernetes/overlays/develop
+    - docker run --rm -v $PWD/kubernetes:/home/kubernetes k8s.gcr.io/kustomize/kustomize:v4.1.3 build /home/kubernetes/overlays/production | kubectl delete -f -
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      when: manual
+  tags: 
+    - git-runner-01
+  

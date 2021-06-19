@@ -1,0 +1,6 @@
+commonLabels:
+  app: spring
+resources:
+  - deploy.yml
+  - service.yml
+  - ingress.yml
